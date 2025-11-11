@@ -1,85 +1,61 @@
-name: Generar APK
+name: Generar APK MangaToPDF
 
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
+  workflow_dispatch: # Permite ejecutar el workflow manualmente desde GitHub
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    env:
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-      ANDROID_SDK_ROOT: ${{ runner.home }}/.buildozer/android/platform
+    runs-on: ubuntu-latest # Usa el runner más reciente de Ubuntu
+
     steps:
       - name: 📦 Clonar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Acción para clonar tu repositorio
 
       - name: 🧰 Instalar dependencias del sistema
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y \
-            python3 python3-pip git zip unzip openjdk-17-jdk wget build-essential \
-            libssl-dev libbz2-dev liblzma-dev libsqlite3-dev libncurses5 libncurses5-dev \
-            libffi-dev zlib1g-dev libgl1-mesa-dev libglu1-mesa-dev pkg-config
+          sudo apt-get install -y python3 python3-pip git zip unzip openjdk-17-jdk wget build-essential autoconf libtool pkg-config libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev # Agregamos algunas dependencias comunes
 
       - name: 🐍 Instalar Buildozer y Cython
         run: |
           pip install --upgrade pip
-          pip install --upgrade buildozer cython
+          pip install buildozer cython setuptools==65.5.0 # setuptools a menudo evita problemas con dependencias
 
-      - name: 📁 Preparar Android SDK directories
+      - name: 📱 Instalar Android SDK, NDK y aceptar licencias
         run: |
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          cd $ANDROID_SDK_ROOT
+          mkdir -p ~/.buildozer/android/platform
+          cd ~/.buildozer/android/platform
+          # Descargar las Command Line Tools de Android SDK (versión más reciente estable)
           wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk-tools.zip
-          unzip -q sdk-tools.zip -d cmdline-tools
-          # Move to 'latest' to satisfy sdkmanager layout expectations
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/cmdline-tools/* cmdline-tools/latest/ || true
-          rm -f sdk-tools.zip
+          unzip sdk-tools.zip -d cmdline-tools
+          
+          # Configurar la variable ANDROID_SDK_ROOT para sdkmanager
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform
+          
+          # Aceptar las licencias *antes* de instalar las herramientas
+          yes | cmdline-tools/cmdline-tools/bin/sdkmanager --licenses
+          
+          # Instalar las herramientas específicas que Buildozer suele requerir y son compatibles con la API 33
+          yes | cmdline-tools/cmdline-tools/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "ndk;25.2.9519653" # NDK compatible con API 33
+          
+          # Opcional: Para verificar que todo se instaló correctamente
+          echo "Verificando instalación del SDK..."
+          cmdline-tools/cmdline-tools/bin/sdkmanager --list
 
-      - name: 🔧 Añadir sdkmanager al PATH y aceptar licencias
+      - name: 🧱 Compilar APK con Buildozer
+        # Ejecutar buildozer. Añadimos -v para ver un log más detallado en caso de fallo
         run: |
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-            "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;23.1.7779620"
+          buildozer android debug -v
 
-      - name: ✅ Mostrar Java y SDK info
-        run: |
-          java -version || true
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls -la $ANDROID_SDK_ROOT || true
-
-      - name: 🧱 Compilar APK con Buildozer (log completo)
-        run: |
-          # exportar las variables de entorno para la sesión
-          export JAVA_HOME=${JAVA_HOME}
-          export ANDROIDSDK=${ANDROID_SDK_ROOT}
-          export ANDROID_HOME=${ANDROID_SDK_ROOT}
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-
-          # buildozer a veces falla y devuelve exit code 1; capturamos el log para subirlo siempre
-          buildozer android debug > buildozer.log 2>&1 || true
-          echo "==== Últimas 200 líneas del buildozer.log ===="
-          tail -n 200 buildozer.log || true
-          # fallamos explícitamente si no hay APK
-          if [ -z "$(ls bin/*.apk 2>/dev/null || true)" ]; then
-            echo "No se generó APK. Revisa buildozer.log (subido como artefacto)."
-            exit 1
-          fi
-
-      - name: 📤 Subir APK(s) generados
-        if: always()
+      - name: 📤 Subir APK generado
         uses: actions/upload-artifact@v4
         with:
           name: MangaToPDF-APK
           path: bin/*.apk
-
-      - name: 📤 Subir buildozer.log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: buildozer-log
-          path: buildozer.log
+          if-no-files-found: ignore # Ignora si no se encuentra el archivo (útil para depuración)
