@@ -1,0 +1,36 @@
+name: Build APK
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Instalar dependencias
+        run: |
+          sudo apt update
+          sudo apt install -y python3-pip zip unzip git openjdk-17-jdk
+          pip install buildozer cython pillow pypdf2 img2pdf natsort
+
+      - name: Construir APK
+        run: |
+          buildozer init || true
+          buildozer -v android debug
+
+      - name: Guardar APK como artefacto
+        uses: actions/upload-artifact@v3
+        with:
+          name: MangaToPDF-APK
+          path: bin/*.apk
