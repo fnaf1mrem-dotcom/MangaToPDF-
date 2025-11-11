@@ -1,46 +1,42 @@
-name: Compilar APK
+name: Generar APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Generar APK
     runs-on: ubuntu-latest
-
     steps:
-      - name: 📥 Clonar repositorio
+      - name: 📦 Clonar repositorio
         uses: actions/checkout@v4
 
       - name: 🧰 Instalar dependencias del sistema
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip git zip unzip openjdk-17-jdk
-          sudo apt-get install -y libffi-dev libssl-dev autoconf automake \
-              libtool pkg-config zlib1g-dev libjpeg-dev libfreetype6-dev
+          sudo apt-get update -y
+          sudo apt-get install -y python3 python3-pip git zip unzip openjdk-17-jdk wget
 
-      - name: 📦 Instalar Buildozer y Cython
+      - name: 📱 Instalar Buildozer y Cython
         run: |
           pip install --upgrade pip
-          pip install buildozer cython virtualenv
+          pip install buildozer cython
 
-      - name: 📱 Instalar SDK y NDK de Android
+      - name: 🤖 Instalar SDK de Android y aceptar licencias
         run: |
           mkdir -p ~/.buildozer/android/platform
           cd ~/.buildozer/android/platform
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O tools.zip
-          unzip -q tools.zip -d cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk-tools.zip
+          unzip sdk-tools.zip -d cmdline-tools
           yes | cmdline-tools/cmdline-tools/bin/sdkmanager --licenses
-          yes | cmdline-tools/cmdline-tools/bin/sdkmanager --install "platform-tools" "build-tools;36.0.0" "platforms;android-34" "ndk;25.2.9519653"
+          yes | cmdline-tools/cmdline-tools/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: 🏗️ Compilar APK con Buildozer
+      - name: 🧱 Compilar APK con Buildozer
         run: |
           buildozer android debug
 
       - name: 📤 Subir APK generado
         uses: actions/upload-artifact@v4
         with:
-          name: MangaToPDF
+          name: MangaToPDF-APK
           path: bin/*.apk
